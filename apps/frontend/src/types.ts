@@ -46,3 +46,8 @@ export interface TableAvailability {
   capacity: number;
   status: 'AVAILABLE' | 'OCCUPIED';
 }
+
+export interface SlotSuggestion {
+  time: string;
+  available: number;
+}

@@ -55,6 +55,17 @@ export class TablesController {
     });
   }
 
+  @Get('suggestions')
+  findSuggestions(
+    @Query('date') date?: string,
+    @Query('people', new DefaultValuePipe(1), ParseIntPipe) people?: number,
+  ) {
+    if (!date) {
+      throw new BadRequestException('date is required');
+    }
+    return this.tablesService.getSlotSuggestions(date, Math.max(1, people ?? 1));
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.tablesService.findOne(id);

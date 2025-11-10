@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { TableAvailability } from '../types';
+import { SlotSuggestion, TableAvailability } from '../types';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/api/v1',
@@ -31,12 +31,45 @@ export const setAuthToken = (token: string | null) => {
   authToken = token;
 };
 
-export const getTablesAvailability = (
+export const getAvailability = async (
   params: { date: string; time: string; people: number },
   signal?: AbortSignal,
-) => api.get<TableAvailability[]>('/tables/availability', {
-  params,
-  signal,
-});
+) => {
+  const { data } = await api.get<TableAvailability[]>('/tables/availability', {
+    params,
+    signal,
+  });
+  return data;
+};
+
+export const getSlotSuggestions = async (
+  params: { date: string; people: number },
+  signal?: AbortSignal,
+) => {
+  const { data } = await api.get<SlotSuggestion[]>('/tables/suggestions', {
+    params,
+    signal,
+  });
+  return data;
+};
+
+type CreateReservationPayload = {
+  clientId: string;
+  tableId: string;
+  date: string;
+  time: string;
+  people: number;
+  notes?: string;
+};
+
+export const createReservation = async (payload: CreateReservationPayload) => {
+  await api.post('/reservations', {
+    customerId: payload.clientId,
+    tableId: payload.tableId,
+    people: payload.people,
+    startsAt: `${payload.date}T${payload.time}:00.000Z`,
+    notes: payload.notes ?? '',
+  });
+};
 
 export { api };

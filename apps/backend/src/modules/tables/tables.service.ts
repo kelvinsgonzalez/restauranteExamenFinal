@@ -13,6 +13,7 @@ import { ReservationStatus } from '../../common/enums/reservation-status.enum';
 import { WsGateway } from '../ws/ws.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { TableAvailabilityDto } from './dto/table-availability.dto';
+import { SlotSuggestionDto } from './dto/slot-suggestion.dto';
 import { DateTime } from 'luxon';
 
 @Injectable()
@@ -109,6 +110,53 @@ export class TablesService {
       name: null,
       status: 'AVAILABLE',
     }));
+  }
+
+  makeSlots(open: string, close: string, stepMin: number): string[] {
+    const safeStep = Math.max(stepMin, 1);
+    const start = DateTime.fromISO(`1970-01-01T${open}`);
+    const end = DateTime.fromISO(`1970-01-01T${close}`);
+    if (!start.isValid || !end.isValid || end <= start) {
+      return [];
+    }
+    const slots: string[] = [];
+    let cursor = start;
+    while (cursor < end) {
+      slots.push(cursor.toFormat('HH:mm'));
+      cursor = cursor.plus({ minutes: safeStep });
+    }
+    return slots;
+  }
+
+  async getSlotSuggestions(
+    date: string,
+    people: number,
+  ): Promise<SlotSuggestionDto[]> {
+    const normalizedPeople = Math.max(1, people);
+    const settings = await this.settingsService.getOrCreate();
+    const timezone = settings?.timezone ?? 'UTC';
+    const normalizedDate = DateTime.fromISO(date, { zone: timezone });
+    if (!normalizedDate.isValid) {
+      throw new BadRequestException('Invalid date');
+    }
+    const slotMinutes = settings?.slotMinutes ?? 60;
+    const openHour = settings?.openHour ?? '10:00';
+    const closeHour = settings?.closeHour ?? '22:00';
+    const slots = this.makeSlots(openHour, closeHour, slotMinutes);
+    if (!slots.length) {
+      return [];
+    }
+
+    const results: SlotSuggestionDto[] = [];
+    for (const slot of slots) {
+      const availability = await this.getAvailability({
+        date: normalizedDate.toISODate() ?? date,
+        time: slot,
+        people: normalizedPeople,
+      });
+      results.push({ time: slot, available: availability.length });
+    }
+    return results;
   }
 
   async occupancySnapshot(reference = new Date()) {
