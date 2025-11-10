@@ -1,0 +1,6 @@
+﻿dist
+build
+coverage
+node_modules
+vite.config.*
+*.config.*

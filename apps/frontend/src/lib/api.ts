@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { TableAvailability } from '../types';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/api/v1',
@@ -29,5 +30,13 @@ api.interceptors.response.use(
 export const setAuthToken = (token: string | null) => {
   authToken = token;
 };
+
+export const getTablesAvailability = (
+  params: { date: string; time: string; people: number },
+  signal?: AbortSignal,
+) => api.get<TableAvailability[]>('/tables/availability', {
+  params,
+  signal,
+});
 
 export { api };

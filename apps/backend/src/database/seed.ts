@@ -28,9 +28,9 @@ async function seed() {
   }
 
   if ((await userRepo.count()) === 0) {
-    const passwordHash = await bcrypt.hash('Admin123!', 10);
+    const passwordHash = await bcrypt.hash('Chef2024!', 10);
     const admin = userRepo.create({
-      email: 'admin@demo.com',
+      email: 'chef@restaurante.com',
       passwordHash,
       role: UserRole.ADMIN,
     });

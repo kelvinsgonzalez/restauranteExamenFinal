@@ -32,7 +32,7 @@ VITE_WS_URL=http://localhost:3000
 VITE_MAPBOX_TOKEN=YOUR_MAPBOX_TOKEN
 ```
 
-Credenciales seed: `admin@demo.com / Admin123!`
+Credenciales seed: `chef@restaurante.com / Chef2024!`
 
 ## Desarrollo local (sin Docker)
 

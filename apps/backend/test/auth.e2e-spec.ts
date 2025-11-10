@@ -10,7 +10,7 @@ describe('AuthController (e2e)', () => {
   const authService = {
     login: jest.fn().mockResolvedValue({
       token: 'test',
-      user: { sub: '1', email: 'admin@demo.com', role: 'ADMIN' },
+      user: { sub: '1', email: 'chef@restaurante.com', role: 'ADMIN' },
     }),
   };
 
@@ -27,7 +27,7 @@ describe('AuthController (e2e)', () => {
   it('/auth/login (POST)', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/login')
-      .send({ email: 'admin@demo.com', password: 'Admin123!' })
+      .send({ email: 'chef@restaurante.com', password: 'Chef2024!' })
       .expect(201);
     expect(response.body.token).toEqual('test');
   });

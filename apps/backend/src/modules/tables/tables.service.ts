@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThan, Not } from 'typeorm';
 import { TableEntity } from '../../entities/table.entity';
@@ -7,6 +11,9 @@ import { UpdateTableDto } from './dto/update-table.dto';
 import { ReservationEntity } from '../../entities/reservation.entity';
 import { ReservationStatus } from '../../common/enums/reservation-status.enum';
 import { WsGateway } from '../ws/ws.gateway';
+import { SettingsService } from '../settings/settings.service';
+import { TableAvailabilityDto } from './dto/table-availability.dto';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class TablesService {
@@ -15,6 +22,7 @@ export class TablesService {
     private readonly tablesRepo: Repository<TableEntity>,
     @InjectRepository(ReservationEntity)
     private readonly reservationsRepo: Repository<ReservationEntity>,
+    private readonly settingsService: SettingsService,
     private readonly wsGateway: WsGateway,
   ) {}
 
@@ -51,6 +59,56 @@ export class TablesService {
     await this.tablesRepo.remove(table);
     await this.emitOccupancySnapshot();
     return true;
+  }
+
+  async getAvailability(params: {
+    date: string;
+    time: string;
+    people: number;
+  }): Promise<TableAvailabilityDto[]> {
+    const settings = await this.settingsService.getOrCreate();
+    const slotMinutes = settings?.slotMinutes ?? 120;
+    const timezone = settings?.timezone ?? 'UTC';
+
+    const start = DateTime.fromISO(`${params.date}T${params.time}`, {
+      zone: timezone,
+    });
+    if (!start.isValid) {
+      throw new BadRequestException('Invalid date/time');
+    }
+    const end = start.plus({ minutes: slotMinutes });
+
+    const availableTables = await this.tablesRepo
+      .createQueryBuilder('table')
+      .where('table.isActive = :active', { active: true })
+      .andWhere('table.capacity >= :people', { people: params.people })
+      .andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('1')
+          .from(ReservationEntity, 'reservation')
+          .where('reservation.tableId = table.id')
+          .andWhere('reservation.status != :cancelled')
+          .andWhere('reservation.startsAt < :end')
+          .andWhere('reservation.endsAt > :start')
+          .getQuery();
+        return `NOT EXISTS ${subQuery}`;
+      })
+      .setParameters({
+        start: start.toJSDate(),
+        end: end.toJSDate(),
+        cancelled: ReservationStatus.CANCELLED,
+      })
+      .orderBy('table.number', 'ASC')
+      .getMany();
+
+    return availableTables.map((table) => ({
+      id: table.id,
+      number: table.number,
+      capacity: table.capacity,
+      name: null,
+      status: 'AVAILABLE',
+    }));
   }
 
   async occupancySnapshot(reference = new Date()) {

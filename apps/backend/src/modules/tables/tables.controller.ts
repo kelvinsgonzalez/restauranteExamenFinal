@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -34,6 +37,22 @@ export class TablesController {
   @Roles(UserRole.ADMIN)
   create(@Body() dto: CreateTableDto) {
     return this.tablesService.create(dto);
+  }
+
+  @Get('availability')
+  findAvailability(
+    @Query('date') date?: string,
+    @Query('time') time?: string,
+    @Query('people', new DefaultValuePipe(1), ParseIntPipe) people?: number,
+  ) {
+    if (!date || !time) {
+      throw new BadRequestException('date and time are required');
+    }
+    return this.tablesService.getAvailability({
+      date,
+      time,
+      people: Math.max(1, people ?? 1),
+    });
   }
 
   @Get(':id')

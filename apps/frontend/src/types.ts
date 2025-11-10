@@ -38,3 +38,11 @@ export interface AvailabilityResponse {
   available: Table[];
   suggestions: { startsAt: string; endsAt: string }[];
 }
+
+export interface TableAvailability {
+  id: string;
+  name?: string | null;
+  number?: number | null;
+  capacity: number;
+  status: 'AVAILABLE' | 'OCCUPIED';
+}

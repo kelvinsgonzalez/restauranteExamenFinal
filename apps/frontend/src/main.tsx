@@ -1,4 +1,4 @@
-import React from 'react';
+import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './app';
 import './styles/index.css';
@@ -9,12 +9,12 @@ import { AuthProvider } from './providers/auth-provider';
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  <StrictMode>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <App />
       </AuthProvider>
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
-  </React.StrictMode>,
+  </StrictMode>,
 );
