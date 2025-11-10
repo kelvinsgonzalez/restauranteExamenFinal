@@ -25,6 +25,10 @@ export class WsGateway {
     this.server.emit('tables.occupancy', payload);
   }
 
+  broadcastTableOccupancyChange(payload: any) {
+    this.server.emit('tables.occupancyChanged', payload);
+  }
+
   @SubscribeMessage('ping')
   handlePing(@MessageBody() data: string) {
     return { pong: data ?? 'pong' };

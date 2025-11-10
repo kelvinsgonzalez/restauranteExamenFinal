@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -62,6 +63,11 @@ export class ReservationsController {
   @Post(':id/cancel')
   cancel(@Param('id') id: string) {
     return this.reservationsService.cancel(id);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @Query('force') force?: string) {
+    return this.reservationsService.remove(id, force === 'true');
   }
 }
 

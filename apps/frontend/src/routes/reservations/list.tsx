@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../lib/api';
+import { api, deleteReservation } from '../../lib/api';
 import { Reservation } from '../../types';
 
 const fetchReservations = async (status: string): Promise<Reservation[]> => {
@@ -24,8 +24,31 @@ const ReservationListRoute = () => {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['reservations'] });
       client.invalidateQueries({ queryKey: ['reservations', 'today'] });
+      client.invalidateQueries({ queryKey: ['dashboard', 'overview'] });
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, force }: { id: string; force: boolean }) =>
+      deleteReservation(id, { force }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['reservations'] });
+      client.invalidateQueries({ queryKey: ['reservations', 'today'] });
+      client.invalidateQueries({ queryKey: ['dashboard', 'overview'] });
+    },
+  });
+
+  const handleDelete = (reservation: Reservation) => {
+    const endDate = reservation.endsAt ?? reservation.startsAt;
+    const isPast = new Date(endDate).getTime() <= Date.now();
+    const confirmed = window.confirm(
+      isPast
+        ? 'Esta reserva ya finalizó. ¿Deseas eliminarla definitivamente?'
+        : 'La reserva aún no ha sucedido. ¿Eliminarla de todos modos?',
+    );
+    if (!confirmed) return;
+    deleteMutation.mutate({ id: reservation.id, force: !isPast });
+  };
 
   return (
     <section className="glass-panel p-6">
@@ -90,6 +113,13 @@ const ReservationListRoute = () => {
                     onClick={() => mutation.mutate({ id: res.id, action: 'cancel' })}
                   >
                     Cancelar
+                  </button>
+                  <button
+                    className="text-xs font-semibold text-neutral-500 disabled:opacity-50"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => handleDelete(res)}
+                  >
+                    Eliminar
                   </button>
                 </td>
               </tr>

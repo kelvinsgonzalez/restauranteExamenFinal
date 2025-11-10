@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -111,6 +112,7 @@ export class ReservationsService {
     const saved = await this.repo.save(reservation);
     this.wsGateway.broadcastReservation('created', saved);
     await this.tablesService.emitOccupancySnapshot();
+    await this.broadcastTableOccupancyChange(saved);
     return this.findOne(saved.id);
   }
 
@@ -160,6 +162,7 @@ export class ReservationsService {
     const saved = await this.repo.save(reservation);
     this.wsGateway.broadcastReservation('updated', saved);
     await this.tablesService.emitOccupancySnapshot();
+    await this.broadcastTableOccupancyChange(saved);
     return saved;
   }
 
@@ -177,7 +180,28 @@ export class ReservationsService {
     const saved = await this.repo.save(reservation);
     this.wsGateway.broadcastReservation('cancelled', saved);
     await this.tablesService.emitOccupancySnapshot();
+    await this.broadcastTableOccupancyChange(saved);
     return saved;
+  }
+
+  async remove(id: string, force = false) {
+    const reservation = await this.findOne(id);
+    const settings = await this.settingsService.getOrCreate();
+    const timezone = settings?.timezone ?? 'UTC';
+    const slotMinutes = settings?.slotMinutes ?? 120;
+    const start = DateTime.fromJSDate(reservation.startsAt).setZone(timezone);
+    const end = reservation.endsAt
+      ? DateTime.fromJSDate(reservation.endsAt).setZone(timezone)
+      : start.plus({ minutes: slotMinutes });
+    const now = DateTime.now().setZone(timezone);
+    if (!force && now < end) {
+      throw new ConflictException('RESERVATION_NOT_FINISHED');
+    }
+    await this.repo.delete(id);
+    this.wsGateway.broadcastReservation('cancelled', reservation);
+    await this.tablesService.emitOccupancySnapshot();
+    await this.broadcastTableOccupancyChange(reservation);
+    return { deleted: true };
   }
 
   async getDashboardOverview(
@@ -361,8 +385,26 @@ export class ReservationsService {
     }
     const conflict = await this.repo.findOne({ where });
     if (conflict) {
-      throw new BadRequestException('Table already reserved for the slot');
+      throw new ConflictException('TABLE_OCCUPIED');
     }
+  }
+
+  private async broadcastTableOccupancyChange(
+    reservation: ReservationEntity,
+  ) {
+    const settings = await this.settingsService.getOrCreate();
+    const timezone = settings?.timezone ?? 'UTC';
+    const slotMinutes = settings?.slotMinutes ?? 120;
+    const start = DateTime.fromJSDate(reservation.startsAt).setZone(timezone);
+    const end = reservation.endsAt
+      ? DateTime.fromJSDate(reservation.endsAt).setZone(timezone)
+      : start.plus({ minutes: slotMinutes });
+    this.wsGateway.broadcastTableOccupancyChange({
+      tableId: reservation.tableId,
+      date: start.toISODate(),
+      start: start.toISO(),
+      end: end.toISO(),
+    });
   }
 
   private mapToCard(

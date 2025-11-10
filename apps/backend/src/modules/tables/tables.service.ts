@@ -14,6 +14,7 @@ import { WsGateway } from '../ws/ws.gateway';
 import { SettingsService } from '../settings/settings.service';
 import { TableAvailabilityDto } from './dto/table-availability.dto';
 import { SlotSuggestionDto } from './dto/slot-suggestion.dto';
+import { TableOccupancyDto } from './dto/table-occupancy.dto';
 import { DateTime } from 'luxon';
 
 @Injectable()
@@ -79,29 +80,26 @@ export class TablesService {
     }
     const end = start.plus({ minutes: slotMinutes });
 
-    const availableTables = await this.tablesRepo
-      .createQueryBuilder('table')
-      .where('table.isActive = :active', { active: true })
-      .andWhere('table.capacity >= :people', { people: params.people })
-      .andWhere((qb) => {
-        const subQuery = qb
-          .subQuery()
-          .select('1')
-          .from(ReservationEntity, 'reservation')
-          .where('reservation.tableId = table.id')
-          .andWhere('reservation.status != :cancelled')
-          .andWhere('reservation.startsAt < :end')
-          .andWhere('reservation.endsAt > :start')
-          .getQuery();
-        return `NOT EXISTS ${subQuery}`;
-      })
-      .setParameters({
-        start: start.toJSDate(),
-        end: end.toJSDate(),
+    const tables = await this.tablesRepo.find({
+      where: { isActive: true },
+      order: { number: 'ASC' },
+    });
+
+    const overlapping = await this.reservationsRepo
+      .createQueryBuilder('reservation')
+      .select('reservation.tableId', 'tableId')
+      .where('reservation.startsAt < :end', { end: end.toJSDate() })
+      .andWhere('reservation.endsAt > :start', { start: start.toJSDate() })
+      .andWhere('reservation.status != :cancelled', {
         cancelled: ReservationStatus.CANCELLED,
       })
-      .orderBy('table.number', 'ASC')
-      .getMany();
+      .getRawMany<{ tableId: string }>();
+
+    const blocked = new Set(overlapping.map((row) => row.tableId));
+
+    const availableTables = tables.filter(
+      (table) => table.capacity >= params.people && !blocked.has(table.id),
+    );
 
     return availableTables.map((table) => ({
       id: table.id,
@@ -157,6 +155,75 @@ export class TablesService {
       results.push({ time: slot, available: availability.length });
     }
     return results;
+  }
+
+  async getOccupancy(params: {
+    date: string;
+    time: string;
+  }): Promise<TableOccupancyDto[]> {
+    const settings = await this.settingsService.getOrCreate();
+    const slotMinutes = settings?.slotMinutes ?? 120;
+    const timezone = settings?.timezone ?? 'UTC';
+
+    const start = DateTime.fromISO(`${params.date}T${params.time}`, {
+      zone: timezone,
+    });
+    if (!start.isValid) {
+      throw new BadRequestException('Invalid date/time');
+    }
+    const end = start.plus({ minutes: slotMinutes });
+
+    const tables = await this.tablesRepo.find({
+      order: { number: 'ASC' },
+    });
+
+    const reservations = await this.reservationsRepo
+      .createQueryBuilder('reservation')
+      .leftJoinAndSelect('reservation.customer', 'customer')
+      .where('reservation.startsAt < :end', { end: end.toJSDate() })
+      .andWhere('reservation.endsAt > :start', { start: start.toJSDate() })
+      .andWhere('reservation.status != :cancelled', {
+        cancelled: ReservationStatus.CANCELLED,
+      })
+      .getMany();
+
+    const slotMinutesFallback = slotMinutes;
+    const reservationMap = new Map<string, ReservationEntity>();
+    reservations.forEach((res) => {
+      if (!reservationMap.has(res.tableId)) {
+        reservationMap.set(res.tableId, res);
+      }
+    });
+
+    return tables.map((table) => {
+      const reservation = reservationMap.get(table.id);
+      if (!reservation) {
+        return {
+          tableId: table.id,
+          tableNumber: table.number,
+          capacity: table.capacity,
+          status: 'AVAILABLE' as const,
+        };
+      }
+      const startDt = DateTime.fromJSDate(reservation.startsAt).setZone(
+        timezone,
+      );
+      const endDt = reservation.endsAt
+        ? DateTime.fromJSDate(reservation.endsAt).setZone(timezone)
+        : startDt.plus({ minutes: slotMinutesFallback });
+      return {
+        tableId: table.id,
+        tableNumber: table.number,
+        capacity: table.capacity,
+        status: 'OCCUPIED' as const,
+        until: endDt.toFormat('HH:mm'),
+        reservationId: reservation.id,
+        customerName:
+          reservation.customer?.fullName ??
+          reservation.customer?.email ??
+          undefined,
+      };
+    });
   }
 
   async occupancySnapshot(reference = new Date()) {

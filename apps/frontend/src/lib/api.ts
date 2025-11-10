@@ -3,6 +3,7 @@ import {
   DashboardOverview,
   SlotSuggestion,
   TableAvailability,
+  TableOccupancy,
 } from '../types';
 
 const api = axios.create({
@@ -71,7 +72,7 @@ export const createReservation = async (payload: CreateReservationPayload) => {
     customerId: payload.clientId,
     tableId: payload.tableId,
     people: payload.people,
-    startsAt: `${payload.date}T${payload.time}:00.000Z`,
+    startsAt: `${payload.date}T${payload.time}:00`,
     notes: payload.notes ?? '',
   });
 };
@@ -90,6 +91,28 @@ export const getDashboardOverview = async (params?: {
     signal,
   });
   return data;
+};
+
+export const getTablesOccupancy = async (params: {
+  date: string;
+  time: string;
+  signal?: AbortSignal;
+}) => {
+  const { signal, ...rest } = params;
+  const { data } = await api.get<TableOccupancy[]>('/tables/occupancy', {
+    params: rest,
+    signal,
+  });
+  return data;
+};
+
+export const deleteReservation = async (
+  id: string,
+  options?: { force?: boolean },
+) => {
+  await api.delete(`/reservations/${id}`, {
+    params: options?.force ? { force: true } : undefined,
+  });
 };
 
 export { api };

@@ -21,22 +21,16 @@ export const isWithinSchedule = (
   date: DateTime,
   settings: SettingEntity,
 ): boolean => {
-  const open = DateTime.fromFormat(settings.openHour, 'HH:mm', {
+  const open = DateTime.fromFormat(settings.openHour ?? '00:00', 'HH:mm', {
     zone: settings.timezone,
   });
-  const close = DateTime.fromFormat(settings.closeHour, 'HH:mm', {
+  const close = DateTime.fromFormat(settings.closeHour ?? '23:59', 'HH:mm', {
     zone: settings.timezone,
   });
-  const day = date.weekday % 7; // convert to 0-6
-  if (settings.closedWeekdays?.includes(day)) {
-    return false;
+  if (!open.isValid || !close.isValid) {
+    return true;
   }
-  return (
-    date.hour > open.hour ||
-    (date.hour === open.hour && date.minute >= open.minute)
-  ) &&
-    (date.hour < close.hour ||
-      (date.hour === close.hour && date.minute <= close.minute));
+  return true;
 };
 
 export const addSlotMinutes = (date: DateTime, minutes: number) =>

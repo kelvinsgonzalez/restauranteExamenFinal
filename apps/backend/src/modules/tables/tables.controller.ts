@@ -55,6 +55,17 @@ export class TablesController {
     });
   }
 
+  @Get('occupancy')
+  findOccupancy(
+    @Query('date') date?: string,
+    @Query('time') time?: string,
+  ) {
+    if (!date || !time) {
+      throw new BadRequestException('date and time are required');
+    }
+    return this.tablesService.getOccupancy({ date, time });
+  }
+
   @Get('suggestions')
   findSuggestions(
     @Query('date') date?: string,

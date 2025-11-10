@@ -49,16 +49,24 @@ const normalizeTime = (value: string) => {
   return trimmed;
 };
 
+type ErrorWithResponse = {
+  response?: { data?: { message?: string }; status?: number };
+  message?: string;
+};
+
 const extractErrorMessage = (err: unknown) => {
-  type ErrorWithResponse = {
-    response?: { data?: { message?: string } };
-    message?: string;
-  };
   if (err && typeof err === 'object') {
     const typed = err as ErrorWithResponse;
     return typed.response?.data?.message ?? typed.message ?? null;
   }
   return null;
+};
+
+const extractStatusCode = (err: unknown) => {
+  if (err && typeof err === 'object' && 'response' in err) {
+    return (err as ErrorWithResponse).response?.status;
+  }
+  return undefined;
 };
 
 const ReservationForm = ({ onSuccess }: Props) => {
@@ -197,7 +205,11 @@ const ReservationForm = ({ onSuccess }: Props) => {
       setStatus('idle');
       onSuccess?.();
     } catch (err) {
-      const message = extractErrorMessage(err) ?? 'No se pudo crear la reserva';
+      const statusCode = extractStatusCode(err);
+      const message =
+        statusCode === 409
+          ? 'La mesa fue tomada en este horario. Elige otra.'
+          : extractErrorMessage(err) ?? 'No se pudo crear la reserva';
       setStatus('error');
       setError(message);
       toast.error(message);

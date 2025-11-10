@@ -52,6 +52,16 @@ export interface SlotSuggestion {
   available: number;
 }
 
+export interface TableOccupancy {
+  tableId: string;
+  tableNumber: number;
+  capacity: number;
+  status: 'AVAILABLE' | 'OCCUPIED';
+  until?: string;
+  reservationId?: string;
+  customerName?: string;
+}
+
 export type ReservationCard = {
   id: string;
   date: string;
