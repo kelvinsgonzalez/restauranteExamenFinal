@@ -51,3 +51,20 @@ export interface SlotSuggestion {
   time: string;
   available: number;
 }
+
+export type ReservationCard = {
+  id: string;
+  date: string;
+  start: string;
+  end: string;
+  durationMinutes: number;
+  tableNumber: number;
+  customerName: string;
+  status: string;
+};
+
+export type DashboardOverview = {
+  totals: { occupancyPercent: number; todayCount: number };
+  today: ReservationCard[];
+  upcoming: { date: string; items: ReservationCard[] }[];
+};

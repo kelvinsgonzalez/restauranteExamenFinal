@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { SlotSuggestion, TableAvailability } from '../types';
+import {
+  DashboardOverview,
+  SlotSuggestion,
+  TableAvailability,
+} from '../types';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/api/v1',
@@ -70,6 +74,22 @@ export const createReservation = async (payload: CreateReservationPayload) => {
     startsAt: `${payload.date}T${payload.time}:00.000Z`,
     notes: payload.notes ?? '',
   });
+};
+
+export const getDashboardOverview = async (params?: {
+  date?: string;
+  days?: number;
+  signal?: AbortSignal;
+}) => {
+  const { signal, ...rest } = params ?? {};
+  const query: Record<string, string | number> = {};
+  if (rest.date) query.date = rest.date;
+  if (rest.days) query.days = rest.days;
+  const { data } = await api.get<DashboardOverview>('/reservations/overview', {
+    params: query,
+    signal,
+  });
+  return data;
 };
 
 export { api };

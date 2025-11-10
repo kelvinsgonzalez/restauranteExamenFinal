@@ -25,6 +25,8 @@ import { DateTime } from 'luxon';
 import { isWithinSchedule, addSlotMinutes } from '../../utils/time.utils';
 import { WsGateway } from '../ws/ws.gateway';
 import { TablesService } from '../tables/tables.service';
+import { ReservationCardDto } from './dto/reservation-card.dto';
+import { DashboardOverviewDto } from './dto/dashboard-overview.dto';
 
 @Injectable()
 export class ReservationsService {
@@ -178,6 +180,96 @@ export class ReservationsService {
     return saved;
   }
 
+  async getDashboardOverview(
+    dateISO: string,
+    days = 7,
+  ): Promise<DashboardOverviewDto> {
+    const settings = await this.settingsService.getOrCreate();
+    const timezone = settings?.timezone ?? 'UTC';
+    const slotMinutes = settings?.slotMinutes ?? 120;
+
+    const baseDate = DateTime.fromISO(dateISO, { zone: timezone });
+    if (!baseDate.isValid) {
+      throw new BadRequestException('Invalid date');
+    }
+    const dayStart = baseDate.startOf('day');
+    const dayEnd = baseDate.endOf('day');
+    const upcomingStart = dayStart.plus({ days: 1 });
+    const upcomingEnd = dayStart.plus({ days }).endOf('day');
+
+    const baseQuery = this.repo
+      .createQueryBuilder('reservation')
+      .leftJoinAndSelect('reservation.table', 'table')
+      .leftJoinAndSelect('reservation.customer', 'customer');
+
+    const todayEntities = await baseQuery
+      .clone()
+      .where('reservation.startsAt >= :start', { start: dayStart.toJSDate() })
+      .andWhere('reservation.startsAt < :end', { end: dayEnd.toJSDate() })
+      .andWhere('reservation.status = :status', {
+        status: ReservationStatus.CONFIRMED,
+      })
+      .orderBy('reservation.startsAt', 'ASC')
+      .getMany();
+
+    const upcomingEntities = await baseQuery
+      .clone()
+      .where('reservation.startsAt >= :start', {
+        start: upcomingStart.toJSDate(),
+      })
+      .andWhere('reservation.startsAt < :end', {
+        end: upcomingEnd.toJSDate(),
+      })
+      .andWhere('reservation.status != :cancelled', {
+        cancelled: ReservationStatus.CANCELLED,
+      })
+      .orderBy('reservation.startsAt', 'ASC')
+      .getMany();
+
+    const todayCards = todayEntities.map((entity) =>
+      this.mapToCard(entity, slotMinutes, timezone),
+    );
+
+    const upcomingGroups = upcomingEntities.reduce<
+      Record<string, ReservationCardDto[]>
+    >((acc, entity) => {
+      const card = this.mapToCard(entity, slotMinutes, timezone);
+      acc[card.date] = acc[card.date] || [];
+      acc[card.date].push(card);
+      return acc;
+    }, {});
+
+    const upcoming = Object.entries(upcomingGroups)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([date, items]) => ({ date, items }));
+
+    const totalTables = await this.tablesRepo.count();
+    const countResult = await this.repo
+      .createQueryBuilder('reservation')
+      .select('COUNT(DISTINCT reservation.tableId)', 'count')
+      .where('reservation.startsAt >= :start', { start: dayStart.toJSDate() })
+      .andWhere('reservation.startsAt < :end', { end: dayEnd.toJSDate() })
+      .andWhere('reservation.status != :cancelled', {
+        cancelled: ReservationStatus.CANCELLED,
+      })
+      .getRawOne<{ count: string }>();
+
+    const reservedTablesToday = Number(countResult?.count ?? 0);
+    const occupancyPercent =
+      totalTables > 0
+        ? Math.round((reservedTablesToday / totalTables) * 100)
+        : 0;
+
+    return {
+      totals: {
+        occupancyPercent,
+        todayCount: todayCards.length,
+      },
+      today: todayCards,
+      upcoming,
+    };
+  }
+
   async availability(query: AvailabilityQueryDto) {
     const settings = await this.settingsService.getOrCreate();
     const start = DateTime.fromISO(
@@ -271,5 +363,36 @@ export class ReservationsService {
     if (conflict) {
       throw new BadRequestException('Table already reserved for the slot');
     }
+  }
+
+  private mapToCard(
+    reservation: ReservationEntity,
+    slotMinutes: number,
+    timezone: string,
+  ): ReservationCardDto {
+    const start = DateTime.fromJSDate(reservation.startsAt).setZone(timezone);
+    let end = reservation.endsAt
+      ? DateTime.fromJSDate(reservation.endsAt).setZone(timezone)
+      : start.plus({ minutes: slotMinutes });
+    if (end <= start) {
+      end = start.plus({ minutes: slotMinutes });
+    }
+    const durationMinutes = Math.max(
+      1,
+      Math.round(end.diff(start, 'minutes').minutes),
+    );
+    return {
+      id: reservation.id,
+      date: start.toISODate() ?? '',
+      start: start.toFormat('HH:mm'),
+      end: end.toFormat('HH:mm'),
+      durationMinutes,
+      tableNumber: reservation.table?.number ?? 0,
+      customerName:
+        reservation.customer?.fullName ??
+        reservation.customer?.email ??
+        'Cliente',
+      status: reservation.status,
+    };
   }
 }

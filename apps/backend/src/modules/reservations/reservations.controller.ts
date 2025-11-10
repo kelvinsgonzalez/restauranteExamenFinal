@@ -29,6 +29,16 @@ export class ReservationsController {
     return this.reservationsService.today();
   }
 
+  @Get('overview')
+  getOverview(
+    @Query('date') date?: string,
+    @Query('days') days?: string,
+  ) {
+    const base = date ?? new Date().toISOString().slice(0, 10);
+    const range = Math.max(1, Number(days ?? 7) || 7);
+    return this.reservationsService.getDashboardOverview(base, range);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.reservationsService.findOne(id);
